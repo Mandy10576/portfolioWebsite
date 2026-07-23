@@ -66,15 +66,15 @@ export interface MessageData {
 
 // Initial default profile & portfolio seed content
 export const DEFAULT_PROFILE: ProfileData = {
-  name: "Alex Rivera",
+  name: "Mandeep Rao",
   title: "Full-Stack Developer & Cloud Architect",
   tagline: "Building scalable web applications, sleek user experiences, and cloud infrastructure.",
   bio: "Passionate Software Engineer with expertise in Next.js, React, Node.js, and AWS Cloud Architecture. Dedicated to crafting clean code, high-performance web systems, and intuitive CMS interfaces.",
   avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80",
-  email: "alex.rivera@example.com",
+  email: "mandeep.rao@example.com",
   phone: "+1 (555) 234-5678",
-  location: "San Francisco, CA",
-  githubUrl: "https://github.com",
+  location: "India",
+  githubUrl: "https://github.com/Mandy10576",
   linkedinUrl: "https://linkedin.com",
   twitterUrl: "https://twitter.com",
   resumeUrl: "#",
