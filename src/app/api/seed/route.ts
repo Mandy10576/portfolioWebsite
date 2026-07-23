@@ -5,6 +5,104 @@ import { prisma } from '@/lib/prisma';
 
 export async function POST() {
   try {
+    // 0. Ensure PostgreSQL Tables exist (Auto-create schema if missing)
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "Admin" (
+          "id" TEXT NOT NULL,
+          "username" TEXT NOT NULL,
+          "password" TEXT NOT NULL,
+          "name" TEXT NOT NULL,
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "Admin_pkey" PRIMARY KEY ("id")
+      );
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE UNIQUE INDEX IF NOT EXISTS "Admin_username_key" ON "Admin"("username");
+    `);
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "Profile" (
+          "id" TEXT NOT NULL,
+          "name" TEXT NOT NULL,
+          "title" TEXT NOT NULL,
+          "tagline" TEXT NOT NULL,
+          "bio" TEXT NOT NULL,
+          "avatarUrl" TEXT,
+          "email" TEXT NOT NULL,
+          "phone" TEXT,
+          "location" TEXT,
+          "githubUrl" TEXT,
+          "linkedinUrl" TEXT,
+          "twitterUrl" TEXT,
+          "resumeUrl" TEXT,
+          "availableForWork" BOOLEAN NOT NULL DEFAULT true,
+          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "Profile_pkey" PRIMARY KEY ("id")
+      );
+    `);
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "Project" (
+          "id" TEXT NOT NULL,
+          "title" TEXT NOT NULL,
+          "slug" TEXT NOT NULL,
+          "description" TEXT NOT NULL,
+          "content" TEXT,
+          "imageUrl" TEXT,
+          "demoUrl" TEXT,
+          "githubUrl" TEXT,
+          "tags" TEXT NOT NULL,
+          "featured" BOOLEAN NOT NULL DEFAULT false,
+          "order" INTEGER NOT NULL DEFAULT 0,
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "Project_pkey" PRIMARY KEY ("id")
+      );
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE UNIQUE INDEX IF NOT EXISTS "Project_slug_key" ON "Project"("slug");
+    `);
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "Skill" (
+          "id" TEXT NOT NULL,
+          "name" TEXT NOT NULL,
+          "category" TEXT NOT NULL,
+          "icon" TEXT,
+          "level" INTEGER NOT NULL DEFAULT 80,
+          "order" INTEGER NOT NULL DEFAULT 0,
+          CONSTRAINT "Skill_pkey" PRIMARY KEY ("id")
+      );
+    `);
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "Experience" (
+          "id" TEXT NOT NULL,
+          "role" TEXT NOT NULL,
+          "company" TEXT NOT NULL,
+          "location" TEXT,
+          "startDate" TEXT NOT NULL,
+          "endDate" TEXT NOT NULL,
+          "description" TEXT NOT NULL,
+          "technologies" TEXT NOT NULL,
+          "order" INTEGER NOT NULL DEFAULT 0,
+          CONSTRAINT "Experience_pkey" PRIMARY KEY ("id")
+      );
+    `);
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "Message" (
+          "id" TEXT NOT NULL,
+          "name" TEXT NOT NULL,
+          "email" TEXT NOT NULL,
+          "subject" TEXT,
+          "message" TEXT NOT NULL,
+          "read" BOOLEAN NOT NULL DEFAULT false,
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "Message_pkey" PRIMARY KEY ("id")
+      );
+    `);
+
     const adminUsername = process.env.ADMIN_USERNAME || 'admin';
     const adminPassword = process.env.ADMIN_PASSWORD || 'adminpassword123';
 
@@ -88,7 +186,7 @@ export async function POST() {
 
     return NextResponse.json({
       success: true,
-      message: 'Database seeded successfully with initial profile, projects, skills, experiences, and admin credentials!'
+      message: 'Database schema created & seeded successfully with initial profile, projects, skills, experiences, and admin credentials!'
     });
   } catch (error) {
     console.error('Seed DB Error:', error);
