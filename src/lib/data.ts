@@ -6,14 +6,14 @@ export interface ProfileData {
   title: string;
   tagline: string;
   bio: string;
-  avatarUrl?: string;
+  avatarUrl?: string | null;
   email: string;
-  phone?: string;
-  location?: string;
-  githubUrl?: string;
-  linkedinUrl?: string;
-  twitterUrl?: string;
-  resumeUrl?: string;
+  phone?: string | null;
+  location?: string | null;
+  githubUrl?: string | null;
+  linkedinUrl?: string | null;
+  twitterUrl?: string | null;
+  resumeUrl?: string | null;
   availableForWork: boolean;
 }
 
@@ -22,10 +22,10 @@ export interface ProjectData {
   title: string;
   slug: string;
   description: string;
-  content?: string;
-  imageUrl?: string;
-  demoUrl?: string;
-  githubUrl?: string;
+  content?: string | null;
+  imageUrl?: string | null;
+  demoUrl?: string | null;
+  githubUrl?: string | null;
   tags: string;
   featured: boolean;
   order?: number;
@@ -35,7 +35,7 @@ export interface SkillData {
   id?: string;
   name: string;
   category: string;
-  icon?: string;
+  icon?: string | null;
   level: number;
   order?: number;
 }
@@ -44,7 +44,7 @@ export interface ExperienceData {
   id?: string;
   role: string;
   company: string;
-  location?: string;
+  location?: string | null;
   startDate: string;
   endDate: string;
   description: string;
@@ -56,7 +56,7 @@ export interface MessageData {
   id?: string;
   name: string;
   email: string;
-  subject?: string;
+  subject?: string | null;
   message: string;
   read?: boolean;
   createdAt?: string;
