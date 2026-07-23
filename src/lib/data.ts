@@ -1,4 +1,6 @@
 import { prisma } from './prisma';
+import fs from 'fs';
+import path from 'path';
 
 export interface ProfileData {
   id?: string;
@@ -157,31 +159,63 @@ export const DEFAULT_EXPERIENCE: ExperienceData[] = [
   }
 ];
 
-// Memory store fallback if DB connection is unavailable locally during development
-let memoryProfile = { ...DEFAULT_PROFILE };
-let memoryProjects = [...DEFAULT_PROJECTS];
-let memorySkills = [...DEFAULT_SKILLS];
-let memoryExperience = [...DEFAULT_EXPERIENCE];
-let memoryMessages: MessageData[] = [
-  {
-    id: "msg-1",
-    name: "Sarah Jenkins",
-    email: "sarah@techpartners.com",
-    subject: "Freelance Project Inquiry",
-    message: "Hi Alex! We loved your portfolio and would like to discuss a custom web application project.",
-    read: false,
-    createdAt: new Date().toISOString()
+// Persistent File Store Fallback Helper
+const getFallbackFilePath = () => {
+  const tmpDir = process.env.VERCEL ? '/tmp' : path.join(process.cwd(), '.data');
+  if (!fs.existsSync(tmpDir)) {
+    try { fs.mkdirSync(tmpDir, { recursive: true }); } catch {}
   }
-];
+  return path.join(tmpDir, 'fallback-store.json');
+};
+
+interface LocalStore {
+  profile: ProfileData;
+  projects: ProjectData[];
+  skills: SkillData[];
+  experiences: ExperienceData[];
+  messages: MessageData[];
+}
+
+function loadLocalStore(): LocalStore {
+  try {
+    const filePath = getFallbackFilePath();
+    if (fs.existsSync(filePath)) {
+      const content = fs.readFileSync(filePath, 'utf8');
+      return JSON.parse(content);
+    }
+  } catch {}
+  return {
+    profile: { ...DEFAULT_PROFILE },
+    projects: [...DEFAULT_PROJECTS],
+    skills: [...DEFAULT_SKILLS],
+    experiences: [...DEFAULT_EXPERIENCE],
+    messages: [
+      {
+        id: "msg-1",
+        name: "Sarah Jenkins",
+        email: "sarah@techpartners.com",
+        subject: "Freelance Project Inquiry",
+        message: "Hi Alex! We loved your portfolio and would like to discuss a custom web application project.",
+        read: false,
+        createdAt: new Date().toISOString()
+      }
+    ]
+  };
+}
+
+function saveLocalStore(store: LocalStore) {
+  try {
+    const filePath = getFallbackFilePath();
+    fs.writeFileSync(filePath, JSON.stringify(store, null, 2), 'utf8');
+  } catch {}
+}
 
 export async function getProfile(): Promise<ProfileData> {
   try {
     const prof = await prisma.profile.findFirst();
     if (prof) return prof;
-  } catch {
-    // Fallback to memory state
-  }
-  return memoryProfile;
+  } catch {}
+  return loadLocalStore().profile;
 }
 
 export async function updateProfile(data: Partial<ProfileData>): Promise<ProfileData> {
@@ -214,20 +248,20 @@ export async function updateProfile(data: Partial<ProfileData>): Promise<Profile
         }
       });
     }
-  } catch {
-    memoryProfile = { ...memoryProfile, ...data };
-    return memoryProfile;
-  }
+  } catch {}
+  
+  const store = loadLocalStore();
+  store.profile = { ...store.profile, ...data };
+  saveLocalStore(store);
+  return store.profile;
 }
 
 export async function getProjects(): Promise<ProjectData[]> {
   try {
     const projs = await prisma.project.findMany({ orderBy: { order: 'asc' } });
-    if (projs.length > 0) return projs;
-  } catch {
-    // Fallback
-  }
-  return memoryProjects;
+    if (projs && projs.length > 0) return projs;
+  } catch {}
+  return loadLocalStore().projects;
 }
 
 export async function createProject(data: Omit<ProjectData, 'id'>): Promise<ProjectData> {
@@ -243,18 +277,20 @@ export async function createProject(data: Omit<ProjectData, 'id'>): Promise<Proj
         githubUrl: data.githubUrl,
         tags: data.tags,
         featured: data.featured ?? false,
-        order: data.order ?? memoryProjects.length + 1,
+        order: data.order ?? 1,
       }
     });
-  } catch {
-    const newProj: ProjectData = {
-      id: `proj-${Date.now()}`,
-      ...data,
-      slug: data.slug || data.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-    };
-    memoryProjects.push(newProj);
-    return newProj;
-  }
+  } catch {}
+
+  const store = loadLocalStore();
+  const newProj: ProjectData = {
+    id: `proj-${Date.now()}`,
+    ...data,
+    slug: data.slug || data.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+  };
+  store.projects.unshift(newProj);
+  saveLocalStore(store);
+  return newProj;
 }
 
 export async function updateProject(id: string, data: Partial<ProjectData>): Promise<ProjectData> {
@@ -263,34 +299,36 @@ export async function updateProject(id: string, data: Partial<ProjectData>): Pro
       where: { id },
       data
     });
-  } catch {
-    const idx = memoryProjects.findIndex(p => p.id === id);
-    if (idx !== -1) {
-      memoryProjects[idx] = { ...memoryProjects[idx], ...data };
-      return memoryProjects[idx];
-    }
-    throw new Error('Project not found');
+  } catch {}
+
+  const store = loadLocalStore();
+  const idx = store.projects.findIndex(p => p.id === id);
+  if (idx !== -1) {
+    store.projects[idx] = { ...store.projects[idx], ...data };
+    saveLocalStore(store);
+    return store.projects[idx];
   }
+  throw new Error('Project not found');
 }
 
 export async function deleteProject(id: string): Promise<boolean> {
   try {
     await prisma.project.delete({ where: { id } });
     return true;
-  } catch {
-    memoryProjects = memoryProjects.filter(p => p.id !== id);
-    return true;
-  }
+  } catch {}
+
+  const store = loadLocalStore();
+  store.projects = store.projects.filter(p => p.id !== id);
+  saveLocalStore(store);
+  return true;
 }
 
 export async function getSkills(): Promise<SkillData[]> {
   try {
     const sks = await prisma.skill.findMany({ orderBy: { order: 'asc' } });
-    if (sks.length > 0) return sks;
-  } catch {
-    // Fallback
-  }
-  return memorySkills;
+    if (sks && sks.length > 0) return sks;
+  } catch {}
+  return loadLocalStore().skills;
 }
 
 export async function createSkill(data: Omit<SkillData, 'id'>): Promise<SkillData> {
@@ -301,37 +339,39 @@ export async function createSkill(data: Omit<SkillData, 'id'>): Promise<SkillDat
         category: data.category,
         icon: data.icon,
         level: Number(data.level),
-        order: data.order ?? memorySkills.length + 1,
+        order: data.order ?? 1,
       }
     });
-  } catch {
-    const newSk: SkillData = {
-      id: `sk-${Date.now()}`,
-      ...data
-    };
-    memorySkills.push(newSk);
-    return newSk;
-  }
+  } catch {}
+
+  const store = loadLocalStore();
+  const newSk: SkillData = {
+    id: `sk-${Date.now()}`,
+    ...data
+  };
+  store.skills.push(newSk);
+  saveLocalStore(store);
+  return newSk;
 }
 
 export async function deleteSkill(id: string): Promise<boolean> {
   try {
     await prisma.skill.delete({ where: { id } });
     return true;
-  } catch {
-    memorySkills = memorySkills.filter(s => s.id !== id);
-    return true;
-  }
+  } catch {}
+
+  const store = loadLocalStore();
+  store.skills = store.skills.filter(s => s.id !== id);
+  saveLocalStore(store);
+  return true;
 }
 
 export async function getExperiences(): Promise<ExperienceData[]> {
   try {
     const exps = await prisma.experience.findMany({ orderBy: { order: 'asc' } });
-    if (exps.length > 0) return exps;
-  } catch {
-    // Fallback
-  }
-  return memoryExperience;
+    if (exps && exps.length > 0) return exps;
+  } catch {}
+  return loadLocalStore().experiences;
 }
 
 export async function createExperience(data: Omit<ExperienceData, 'id'>): Promise<ExperienceData> {
@@ -345,39 +385,41 @@ export async function createExperience(data: Omit<ExperienceData, 'id'>): Promis
         endDate: data.endDate,
         description: data.description,
         technologies: data.technologies,
-        order: data.order ?? memoryExperience.length + 1,
+        order: data.order ?? 1,
       }
     });
-  } catch {
-    const newExp: ExperienceData = {
-      id: `exp-${Date.now()}`,
-      ...data
-    };
-    memoryExperience.push(newExp);
-    return newExp;
-  }
+  } catch {}
+
+  const store = loadLocalStore();
+  const newExp: ExperienceData = {
+    id: `exp-${Date.now()}`,
+    ...data
+  };
+  store.experiences.push(newExp);
+  saveLocalStore(store);
+  return newExp;
 }
 
 export async function deleteExperience(id: string): Promise<boolean> {
   try {
     await prisma.experience.delete({ where: { id } });
     return true;
-  } catch {
-    memoryExperience = memoryExperience.filter(e => e.id !== id);
-    return true;
-  }
+  } catch {}
+
+  const store = loadLocalStore();
+  store.experiences = store.experiences.filter(e => e.id !== id);
+  saveLocalStore(store);
+  return true;
 }
 
 export async function getMessages(): Promise<MessageData[]> {
   try {
     const msgs = await prisma.message.findMany({ orderBy: { createdAt: 'desc' } });
-    if (msgs.length > 0) {
+    if (msgs && msgs.length > 0) {
       return msgs.map(m => ({ ...m, createdAt: m.createdAt.toISOString() }));
     }
-  } catch {
-    // Fallback
-  }
-  return memoryMessages;
+  } catch {}
+  return loadLocalStore().messages;
 }
 
 export async function createMessage(data: { name: string; email: string; subject?: string; message: string }): Promise<MessageData> {
@@ -391,35 +433,41 @@ export async function createMessage(data: { name: string; email: string; subject
       }
     });
     return { ...created, createdAt: created.createdAt.toISOString() };
-  } catch {
-    const newMsg: MessageData = {
-      id: `msg-${Date.now()}`,
-      ...data,
-      read: false,
-      createdAt: new Date().toISOString()
-    };
-    memoryMessages.unshift(newMsg);
-    return newMsg;
-  }
+  } catch {}
+
+  const store = loadLocalStore();
+  const newMsg: MessageData = {
+    id: `msg-${Date.now()}`,
+    ...data,
+    read: false,
+    createdAt: new Date().toISOString()
+  };
+  store.messages.unshift(newMsg);
+  saveLocalStore(store);
+  return newMsg;
 }
 
 export async function markMessageRead(id: string): Promise<boolean> {
   try {
     await prisma.message.update({ where: { id }, data: { read: true } });
     return true;
-  } catch {
-    const msg = memoryMessages.find(m => m.id === id);
-    if (msg) msg.read = true;
-    return true;
-  }
+  } catch {}
+
+  const store = loadLocalStore();
+  const msg = store.messages.find(m => m.id === id);
+  if (msg) msg.read = true;
+  saveLocalStore(store);
+  return true;
 }
 
 export async function deleteMessage(id: string): Promise<boolean> {
   try {
     await prisma.message.delete({ where: { id } });
     return true;
-  } catch {
-    memoryMessages = memoryMessages.filter(m => m.id !== id);
-    return true;
-  }
+  } catch {}
+
+  const store = loadLocalStore();
+  store.messages = store.messages.filter(m => m.id !== id);
+  saveLocalStore(store);
+  return true;
 }

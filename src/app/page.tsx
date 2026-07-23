@@ -8,7 +8,8 @@ import ContactSection from '@/components/ContactSection';
 import Footer from '@/components/Footer';
 import { getExperiences, getProfile, getProjects, getSkills } from '@/lib/data';
 
-// Dynamic rendering so DB updates appear immediately
+// Enforce dynamic rendering so added/edited projects appear instantly on refresh
+export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export default async function HomePage() {
