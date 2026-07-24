@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import ImageUploader from '@/components/ImageUploader';
 import {
   ShieldCheck,
   FolderPlus,
@@ -21,7 +22,9 @@ import {
   CheckCircle2,
   ExternalLink,
   Github,
-  Star
+  Star,
+  Pencil,
+  X
 } from 'lucide-react';
 import { ExperienceData, ProfileData, ProjectData, SkillData, MessageData } from '@/lib/data';
 
@@ -39,6 +42,9 @@ export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Editing modal state
+  const [editingProject, setEditingProject] = useState<ProjectData | null>(null);
 
   // Forms states
   const [newProject, setNewProject] = useState({
@@ -168,6 +174,29 @@ export default function AdminDashboardPage() {
     if (!confirm('Are you sure you want to delete this project?')) return;
     await fetch(`/api/admin/projects/${id}`, { method: 'DELETE' });
     await loadAllData();
+  };
+
+  // Update Project
+  const handleUpdateProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProject || !editingProject.id) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/admin/projects/${editingProject.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editingProject),
+      });
+      if (res.ok) {
+        setEditingProject(null);
+        await loadAllData();
+        setFeedback({ type: 'success', message: 'Project updated successfully!' });
+      }
+    } catch (err) {
+      setFeedback({ type: 'error', message: (err as Error).message });
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Add Skill
@@ -483,16 +512,14 @@ export default function AdminDashboardPage() {
                         className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500"
                       />
                     </div>
-                    <div>
-                      <label className="block text-xs text-slate-400 mb-1">Image URL</label>
-                      <input
-                        type="text"
-                        value={newProject.imageUrl}
-                        onChange={(e) => setNewProject({ ...newProject, imageUrl: e.target.value })}
-                        placeholder="https://images.unsplash.com/..."
-                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500"
-                      />
-                    </div>
+                  </div>
+
+                  <div>
+                    <ImageUploader
+                      value={newProject.imageUrl}
+                      onChange={(url) => setNewProject({ ...newProject, imageUrl: url })}
+                      label="Project Cover Image"
+                    />
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -550,17 +577,142 @@ export default function AdminDashboardPage() {
                         </div>
                       </div>
 
-                      <button
-                        onClick={() => proj.id && handleDeleteProject(proj.id)}
-                        className="p-2 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 text-xs transition-colors shrink-0"
-                        title="Delete project"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => setEditingProject(proj)}
+                          className="p-2 rounded-lg bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 text-xs transition-colors"
+                          title="Edit project"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => proj.id && handleDeleteProject(proj.id)}
+                          className="p-2 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 text-xs transition-colors"
+                          title="Delete project"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
               </div>
+
+              {/* Edit Project Modal */}
+              {editingProject && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+                  <div className="bg-slate-950 border border-slate-800 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-6 shadow-2xl">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+                      <h3 className="text-base font-bold text-white flex items-center gap-2">
+                        <Pencil className="w-4 h-4 text-sky-400" />
+                        Edit Project Details
+                      </h3>
+                      <button
+                        onClick={() => setEditingProject(null)}
+                        className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-900 transition-colors"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+
+                    <form onSubmit={handleUpdateProject} className="space-y-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs text-slate-400 mb-1">Project Title *</label>
+                          <input
+                            type="text"
+                            required
+                            value={editingProject.title}
+                            onChange={(e) => setEditingProject({ ...editingProject, title: e.target.value })}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-slate-400 mb-1">Tags (Comma Separated) *</label>
+                          <input
+                            type="text"
+                            required
+                            value={editingProject.tags}
+                            onChange={(e) => setEditingProject({ ...editingProject, tags: e.target.value })}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs text-slate-400 mb-1">Short Description *</label>
+                        <textarea
+                          rows={3}
+                          required
+                          value={editingProject.description}
+                          onChange={(e) => setEditingProject({ ...editingProject, description: e.target.value })}
+                          className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs text-slate-400 mb-1">Live Demo URL</label>
+                          <input
+                            type="text"
+                            value={editingProject.demoUrl || ''}
+                            onChange={(e) => setEditingProject({ ...editingProject, demoUrl: e.target.value })}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-slate-400 mb-1">GitHub Repo URL</label>
+                          <input
+                            type="text"
+                            value={editingProject.githubUrl || ''}
+                            onChange={(e) => setEditingProject({ ...editingProject, githubUrl: e.target.value })}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <ImageUploader
+                          value={editingProject.imageUrl || ''}
+                          onChange={(url) => setEditingProject({ ...editingProject, imageUrl: url })}
+                          label="Project Cover Image"
+                        />
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-2">
+                        <input
+                          type="checkbox"
+                          id="edit-featured"
+                          checked={editingProject.featured}
+                          onChange={(e) => setEditingProject({ ...editingProject, featured: e.target.checked })}
+                          className="rounded border-slate-800 bg-slate-900 text-sky-500 focus:ring-sky-500"
+                        />
+                        <label htmlFor="edit-featured" className="text-xs text-slate-300">
+                          Feature on homepage badge
+                        </label>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+                        <button
+                          type="button"
+                          onClick={() => setEditingProject(null)}
+                          className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={saving}
+                          className="px-5 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 text-white font-semibold text-xs flex items-center gap-2 shadow-lg shadow-sky-500/20"
+                        >
+                          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                          Update Project
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -621,7 +773,7 @@ export default function AdminDashboardPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs text-slate-400 mb-1">GitHub Profile URL</label>
                     <input
@@ -640,15 +792,14 @@ export default function AdminDashboardPage() {
                       className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500"
                     />
                   </div>
-                  <div>
-                    <label className="block text-xs text-slate-400 mb-1">Avatar Image URL</label>
-                    <input
-                      type="text"
-                      value={profile.avatarUrl || ''}
-                      onChange={(e) => setProfile({ ...profile, avatarUrl: e.target.value })}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500"
-                    />
-                  </div>
+                </div>
+
+                <div className="pt-2">
+                  <ImageUploader
+                    value={profile.avatarUrl || ''}
+                    onChange={(url) => setProfile({ ...profile, avatarUrl: url })}
+                    label="Profile Avatar Image"
+                  />
                 </div>
 
                 <button
