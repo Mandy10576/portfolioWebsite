@@ -223,13 +223,7 @@ function saveLocalStore(store: LocalStore) {
   } catch {}
 }
 
-let dbDisabled = false;
-
-async function dbQuery<T>(promise: Promise<T>, timeoutMs: number = 400): Promise<T> {
-  if (dbDisabled) {
-    throw new Error('Database temporary disabled due to connection reset');
-  }
-
+async function dbQuery<T>(promise: Promise<T>, timeoutMs: number = 10000): Promise<T> {
   let timer: NodeJS.Timeout;
   const timeoutPromise = new Promise<T>((_, reject) => {
     timer = setTimeout(() => reject(new Error('DB Timeout')), timeoutMs);
@@ -237,14 +231,6 @@ async function dbQuery<T>(promise: Promise<T>, timeoutMs: number = 400): Promise
 
   try {
     return await Promise.race([promise, timeoutPromise]);
-  } catch (err: any) {
-    // If AWS RDS PostgreSQL resets connection or times out, pause DB attempts for 30s to prevent Next.js dev overlay errors
-    const msg = err?.message || '';
-    if (msg.includes('ConnectionReset') || msg.includes('forcibly closed') || msg.includes('DB Timeout') || err?.code === 'P1001') {
-      dbDisabled = true;
-      setTimeout(() => { dbDisabled = false; }, 30000);
-    }
-    throw err;
   } finally {
     clearTimeout(timer!);
   }
@@ -252,13 +238,12 @@ async function dbQuery<T>(promise: Promise<T>, timeoutMs: number = 400): Promise
 
 // PROFILE
 export async function getProfile(): Promise<ProfileData> {
-  if (hasLocalStoreFile()) {
-    return loadLocalStore().profile;
-  }
   try {
     const prof = await dbQuery(prisma.profile.findFirst());
     if (prof) return prof;
-  } catch {}
+  } catch (err) {
+    console.warn('getProfile DB fallback:', err);
+  }
   return loadLocalStore().profile;
 }
 
@@ -303,13 +288,12 @@ export async function updateProfile(data: Partial<ProfileData>): Promise<Profile
 
 // PROJECTS
 export async function getProjects(): Promise<ProjectData[]> {
-  if (hasLocalStoreFile()) {
-    return loadLocalStore().projects;
-  }
   try {
     const projs = await dbQuery(prisma.project.findMany({ orderBy: { order: 'asc' } }));
     if (projs && projs.length > 0) return projs;
-  } catch {}
+  } catch (err) {
+    console.warn('getProjects DB fallback:', err);
+  }
   return loadLocalStore().projects;
 }
 
@@ -378,13 +362,12 @@ export async function deleteProject(id: string): Promise<boolean> {
 
 // SKILLS
 export async function getSkills(): Promise<SkillData[]> {
-  if (hasLocalStoreFile()) {
-    return loadLocalStore().skills;
-  }
   try {
     const sks = await dbQuery(prisma.skill.findMany({ orderBy: { order: 'asc' } }));
     if (sks && sks.length > 0) return sks;
-  } catch {}
+  } catch (err) {
+    console.warn('getSkills DB fallback:', err);
+  }
   return loadLocalStore().skills;
 }
 
@@ -426,13 +409,12 @@ export async function deleteSkill(id: string): Promise<boolean> {
 
 // EXPERIENCES
 export async function getExperiences(): Promise<ExperienceData[]> {
-  if (hasLocalStoreFile()) {
-    return loadLocalStore().experiences;
-  }
   try {
     const exps = await dbQuery(prisma.experience.findMany({ orderBy: { order: 'asc' } }));
     if (exps && exps.length > 0) return exps;
-  } catch {}
+  } catch (err) {
+    console.warn('getExperiences DB fallback:', err);
+  }
   return loadLocalStore().experiences;
 }
 
@@ -477,15 +459,14 @@ export async function deleteExperience(id: string): Promise<boolean> {
 
 // MESSAGES
 export async function getMessages(): Promise<MessageData[]> {
-  if (hasLocalStoreFile()) {
-    return loadLocalStore().messages;
-  }
   try {
     const msgs = await dbQuery(prisma.message.findMany({ orderBy: { createdAt: 'desc' } }));
     if (msgs && msgs.length > 0) {
       return msgs.map(m => ({ ...m, createdAt: m.createdAt.toISOString() }));
     }
-  } catch {}
+  } catch (err) {
+    console.warn('getMessages DB fallback:', err);
+  }
   return loadLocalStore().messages;
 }
 
