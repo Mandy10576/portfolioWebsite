@@ -223,12 +223,31 @@ function saveLocalStore(store: LocalStore) {
   } catch {}
 }
 
+let dbDisabled = false;
+
 async function dbQuery<T>(promise: Promise<T>, timeoutMs: number = 400): Promise<T> {
+  if (dbDisabled) {
+    throw new Error('Database temporary disabled due to connection reset');
+  }
+
   let timer: NodeJS.Timeout;
   const timeoutPromise = new Promise<T>((_, reject) => {
     timer = setTimeout(() => reject(new Error('DB Timeout')), timeoutMs);
   });
-  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timer));
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } catch (err: any) {
+    // If AWS RDS PostgreSQL resets connection or times out, pause DB attempts for 30s to prevent Next.js dev overlay errors
+    const msg = err?.message || '';
+    if (msg.includes('ConnectionReset') || msg.includes('forcibly closed') || msg.includes('DB Timeout') || err?.code === 'P1001') {
+      dbDisabled = true;
+      setTimeout(() => { dbDisabled = false; }, 30000);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer!);
+  }
 }
 
 // PROFILE
