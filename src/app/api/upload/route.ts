@@ -20,19 +20,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No file provided in request.' }, { status: 400 });
     }
 
-    // 3. Validate file type
-    const allowedMimeTypes = [
-      'image/jpeg',
-      'image/jpg',
-      'image/png',
-      'image/gif',
-      'image/webp',
-      'image/svg+xml',
-    ];
-
-    if (!allowedMimeTypes.includes(file.type)) {
+    // 3. Validate file type (allow any image format)
+    const mimeType = file.type || '';
+    if (mimeType && !mimeType.startsWith('image/')) {
       return NextResponse.json(
-        { error: 'Invalid file format. Please upload an image file (PNG, JPG, WEBP, GIF, SVG).' },
+        { error: 'Invalid file format. Please upload an image file (PNG, JPG, WEBP, GIF, SVG, etc.).' },
         { status: 400 }
       );
     }
@@ -50,27 +42,43 @@ export async function POST(request: Request) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // 6. Generate unique filename
-    const ext = path.extname(file.name) || '.jpg';
+    // 6. Generate filename safely
+    const originalName = file.name || 'image.jpg';
+    const ext = path.extname(originalName) || '.jpg';
     const cleanExt = ext.startsWith('.') ? ext : `.${ext}`;
     const filename = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}${cleanExt}`;
 
-    // 7. Write to public/uploads folder
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads');
-    await mkdir(uploadDir, { recursive: true });
+    // 7. Try writing to public/uploads folder with base64 fallback
+    try {
+      const uploadDir = path.join(process.cwd(), 'public', 'uploads');
+      await mkdir(uploadDir, { recursive: true });
 
-    const filePath = path.join(uploadDir, filename);
-    await writeFile(filePath, buffer);
+      const filePath = path.join(uploadDir, filename);
+      await writeFile(filePath, buffer);
 
-    const fileUrl = `/uploads/${filename}`;
+      const fileUrl = `/uploads/${filename}`;
 
-    return NextResponse.json({
-      success: true,
-      url: fileUrl,
-      filename: filename,
-    });
-  } catch (error) {
+      return NextResponse.json({
+        success: true,
+        url: fileUrl,
+        filename: filename,
+      });
+    } catch (fsError) {
+      console.warn('FileSystem save failed, falling back to base64 Data URL:', fsError);
+      
+      // Fallback: Convert to Base64 Data URL
+      const finalMime = mimeType || 'image/jpeg';
+      const base64Url = `data:${finalMime};base64,${buffer.toString('base64')}`;
+
+      return NextResponse.json({
+        success: true,
+        url: base64Url,
+        filename: filename,
+      });
+    }
+  } catch (error: any) {
     console.error('Image upload error:', error);
-    return NextResponse.json({ error: 'Failed to save image. Please try again.' }, { status: 500 });
+    const errorMessage = error?.message || 'Failed to process image upload.';
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
