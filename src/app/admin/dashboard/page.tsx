@@ -169,11 +169,23 @@ export default function AdminDashboardPage() {
     }
   };
 
-  // Delete Project
+  // Delete Project (Optimistic UI - Instant 0ms)
   const handleDeleteProject = async (id: string) => {
     if (!confirm('Are you sure you want to delete this project?')) return;
-    await fetch(`/api/admin/projects/${id}`, { method: 'DELETE' });
-    await loadAllData();
+    
+    const prevProjects = projects;
+    setProjects(prev => prev.filter(p => (p.id || p.slug) !== id));
+
+    try {
+      const res = await fetch(`/api/admin/projects/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        setProjects(prevProjects);
+        setFeedback({ type: 'error', message: 'Failed to delete project.' });
+      }
+    } catch {
+      setProjects(prevProjects);
+      setFeedback({ type: 'error', message: 'Failed to delete project.' });
+    }
   };
 
   // Update Project
@@ -219,10 +231,16 @@ export default function AdminDashboardPage() {
     }
   };
 
-  // Delete Skill
+  // Delete Skill (Optimistic UI - Instant 0ms)
   const handleDeleteSkill = async (id: string) => {
-    await fetch(`/api/admin/skills/${id}`, { method: 'DELETE' });
-    await loadAllData();
+    const prevSkills = skills;
+    setSkills(prev => prev.filter(s => s.id !== id));
+    try {
+      const res = await fetch(`/api/admin/skills/${id}`, { method: 'DELETE' });
+      if (!res.ok) setSkills(prevSkills);
+    } catch {
+      setSkills(prevSkills);
+    }
   };
 
   // Add Experience
@@ -253,10 +271,16 @@ export default function AdminDashboardPage() {
     }
   };
 
-  // Delete Experience
+  // Delete Experience (Optimistic UI - Instant 0ms)
   const handleDeleteExp = async (id: string) => {
-    await fetch(`/api/admin/experience/${id}`, { method: 'DELETE' });
-    await loadAllData();
+    const prevExps = experiences;
+    setExperiences(prev => prev.filter(e => e.id !== id));
+    try {
+      const res = await fetch(`/api/admin/experience/${id}`, { method: 'DELETE' });
+      if (!res.ok) setExperiences(prevExps);
+    } catch {
+      setExperiences(prevExps);
+    }
   };
 
   // Mark Message Read
@@ -265,10 +289,16 @@ export default function AdminDashboardPage() {
     await loadAllData();
   };
 
-  // Delete Message
+  // Delete Message (Optimistic UI - Instant 0ms)
   const handleDeleteMessage = async (id: string) => {
-    await fetch(`/api/admin/messages/${id}`, { method: 'DELETE' });
-    await loadAllData();
+    const prevMsgs = messages;
+    setMessages(prev => prev.filter(m => m.id !== id));
+    try {
+      const res = await fetch(`/api/admin/messages/${id}`, { method: 'DELETE' });
+      if (!res.ok) setMessages(prevMsgs);
+    } catch {
+      setMessages(prevMsgs);
+    }
   };
 
   // Seed DB

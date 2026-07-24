@@ -210,9 +210,17 @@ function saveLocalStore(store: LocalStore) {
   } catch {}
 }
 
+async function dbQuery<T>(promise: Promise<T>, timeoutMs: number = 400): Promise<T> {
+  let timer: NodeJS.Timeout;
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('DB Timeout')), timeoutMs);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timer));
+}
+
 export async function getProfile(): Promise<ProfileData> {
   try {
-    const prof = await prisma.profile.findFirst();
+    const prof = await dbQuery(prisma.profile.findFirst());
     if (prof) return prof;
   } catch {}
   return loadLocalStore().profile;
@@ -258,7 +266,7 @@ export async function updateProfile(data: Partial<ProfileData>): Promise<Profile
 
 export async function getProjects(): Promise<ProjectData[]> {
   try {
-    const projs = await prisma.project.findMany({ orderBy: { order: 'asc' } });
+    const projs = await dbQuery(prisma.project.findMany({ orderBy: { order: 'asc' } }));
     if (projs && projs.length > 0) return projs;
   } catch {}
   return loadLocalStore().projects;
@@ -266,7 +274,7 @@ export async function getProjects(): Promise<ProjectData[]> {
 
 export async function createProject(data: Omit<ProjectData, 'id'>): Promise<ProjectData> {
   try {
-    return await prisma.project.create({
+    return await dbQuery(prisma.project.create({
       data: {
         title: data.title,
         slug: data.slug || data.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
@@ -279,7 +287,7 @@ export async function createProject(data: Omit<ProjectData, 'id'>): Promise<Proj
         featured: data.featured ?? false,
         order: data.order ?? 1,
       }
-    });
+    }));
   } catch {}
 
   const store = loadLocalStore();
@@ -295,10 +303,10 @@ export async function createProject(data: Omit<ProjectData, 'id'>): Promise<Proj
 
 export async function updateProject(id: string, data: Partial<ProjectData>): Promise<ProjectData> {
   try {
-    return await prisma.project.update({
+    return await dbQuery(prisma.project.update({
       where: { id },
       data
-    });
+    }));
   } catch {}
 
   const store = loadLocalStore();
@@ -313,7 +321,7 @@ export async function updateProject(id: string, data: Partial<ProjectData>): Pro
 
 export async function deleteProject(id: string): Promise<boolean> {
   try {
-    await prisma.project.delete({ where: { id } });
+    await dbQuery(prisma.project.delete({ where: { id } }));
     return true;
   } catch {}
 
@@ -325,7 +333,7 @@ export async function deleteProject(id: string): Promise<boolean> {
 
 export async function getSkills(): Promise<SkillData[]> {
   try {
-    const sks = await prisma.skill.findMany({ orderBy: { order: 'asc' } });
+    const sks = await dbQuery(prisma.skill.findMany({ orderBy: { order: 'asc' } }));
     if (sks && sks.length > 0) return sks;
   } catch {}
   return loadLocalStore().skills;
@@ -333,7 +341,7 @@ export async function getSkills(): Promise<SkillData[]> {
 
 export async function createSkill(data: Omit<SkillData, 'id'>): Promise<SkillData> {
   try {
-    return await prisma.skill.create({
+    return await dbQuery(prisma.skill.create({
       data: {
         name: data.name,
         category: data.category,
@@ -341,7 +349,7 @@ export async function createSkill(data: Omit<SkillData, 'id'>): Promise<SkillDat
         level: Number(data.level),
         order: data.order ?? 1,
       }
-    });
+    }));
   } catch {}
 
   const store = loadLocalStore();
@@ -356,7 +364,7 @@ export async function createSkill(data: Omit<SkillData, 'id'>): Promise<SkillDat
 
 export async function deleteSkill(id: string): Promise<boolean> {
   try {
-    await prisma.skill.delete({ where: { id } });
+    await dbQuery(prisma.skill.delete({ where: { id } }));
     return true;
   } catch {}
 
@@ -368,7 +376,7 @@ export async function deleteSkill(id: string): Promise<boolean> {
 
 export async function getExperiences(): Promise<ExperienceData[]> {
   try {
-    const exps = await prisma.experience.findMany({ orderBy: { order: 'asc' } });
+    const exps = await dbQuery(prisma.experience.findMany({ orderBy: { order: 'asc' } }));
     if (exps && exps.length > 0) return exps;
   } catch {}
   return loadLocalStore().experiences;
@@ -376,7 +384,7 @@ export async function getExperiences(): Promise<ExperienceData[]> {
 
 export async function createExperience(data: Omit<ExperienceData, 'id'>): Promise<ExperienceData> {
   try {
-    return await prisma.experience.create({
+    return await dbQuery(prisma.experience.create({
       data: {
         role: data.role,
         company: data.company,
@@ -387,7 +395,7 @@ export async function createExperience(data: Omit<ExperienceData, 'id'>): Promis
         technologies: data.technologies,
         order: data.order ?? 1,
       }
-    });
+    }));
   } catch {}
 
   const store = loadLocalStore();
@@ -402,7 +410,7 @@ export async function createExperience(data: Omit<ExperienceData, 'id'>): Promis
 
 export async function deleteExperience(id: string): Promise<boolean> {
   try {
-    await prisma.experience.delete({ where: { id } });
+    await dbQuery(prisma.experience.delete({ where: { id } }));
     return true;
   } catch {}
 
@@ -414,7 +422,7 @@ export async function deleteExperience(id: string): Promise<boolean> {
 
 export async function getMessages(): Promise<MessageData[]> {
   try {
-    const msgs = await prisma.message.findMany({ orderBy: { createdAt: 'desc' } });
+    const msgs = await dbQuery(prisma.message.findMany({ orderBy: { createdAt: 'desc' } }));
     if (msgs && msgs.length > 0) {
       return msgs.map(m => ({ ...m, createdAt: m.createdAt.toISOString() }));
     }
@@ -424,14 +432,14 @@ export async function getMessages(): Promise<MessageData[]> {
 
 export async function createMessage(data: { name: string; email: string; subject?: string; message: string }): Promise<MessageData> {
   try {
-    const created = await prisma.message.create({
+    const created = await dbQuery(prisma.message.create({
       data: {
         name: data.name,
         email: data.email,
         subject: data.subject,
         message: data.message,
       }
-    });
+    }));
     return { ...created, createdAt: created.createdAt.toISOString() };
   } catch {}
 
@@ -449,7 +457,7 @@ export async function createMessage(data: { name: string; email: string; subject
 
 export async function markMessageRead(id: string): Promise<boolean> {
   try {
-    await prisma.message.update({ where: { id }, data: { read: true } });
+    await dbQuery(prisma.message.update({ where: { id }, data: { read: true } }));
     return true;
   } catch {}
 
@@ -462,7 +470,7 @@ export async function markMessageRead(id: string): Promise<boolean> {
 
 export async function deleteMessage(id: string): Promise<boolean> {
   try {
-    await prisma.message.delete({ where: { id } });
+    await dbQuery(prisma.message.delete({ where: { id } }));
     return true;
   } catch {}
 
