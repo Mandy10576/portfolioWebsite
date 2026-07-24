@@ -99,12 +99,12 @@ export const DEFAULT_PROJECTS: ProjectData[] = [
     id: "proj-2",
     title: "CloudVault Storage Solution",
     slug: "cloudvault-storage-solution",
-    description: "Encrypted file management system with multi-tenant permissions and fast cloud sync.",
-    content: "Secure cloud document platform with client-side encryption and S3 bucket synchronization.",
+    description: "Distributed file storage & sharing service with end-to-end encryption and fast CDN delivery.",
+    content: "Architectural overview of CloudVault, focusing on zero-knowledge encryption algorithms and multi-region S3 replication.",
     imageUrl: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
     demoUrl: "https://example.com",
     githubUrl: "https://github.com",
-    tags: "React, Node.js, AWS RDS, Docker",
+    tags: "React, Node.js, AWS S3, Redis",
     featured: true,
     order: 2
   },
@@ -131,7 +131,7 @@ export const DEFAULT_SKILLS: SkillData[] = [
   { id: "sk-5", name: "PostgreSQL & Prisma", category: "Database", level: 85, order: 5 },
   { id: "sk-6", name: "AWS RDS & EC2 / S3", category: "DevOps & Cloud", level: 82, order: 6 },
   { id: "sk-7", name: "Vercel Deployment", category: "DevOps & Cloud", level: 94, order: 7 },
-  { id: "sk-8", name: "REST APIs & GraphQL", category: "Backend", level: 87, order: 8 }
+  { id: "sk-8", name: "REST APIs & GraphQL", category: "Backend", level: 87, order: 8 },
 ];
 
 export const DEFAULT_EXPERIENCE: ExperienceData[] = [
@@ -168,6 +168,15 @@ const getFallbackFilePath = () => {
   return path.join(tmpDir, 'fallback-store.json');
 };
 
+const hasLocalStoreFile = () => {
+  try {
+    const filePath = getFallbackFilePath();
+    return fs.existsSync(filePath);
+  } catch {
+    return false;
+  }
+};
+
 interface LocalStore {
   profile: ProfileData;
   projects: ProjectData[];
@@ -184,7 +193,8 @@ function loadLocalStore(): LocalStore {
       return JSON.parse(content);
     }
   } catch {}
-  return {
+  
+  const initialStore: LocalStore = {
     profile: { ...DEFAULT_PROFILE },
     projects: [...DEFAULT_PROJECTS],
     skills: [...DEFAULT_SKILLS],
@@ -201,6 +211,9 @@ function loadLocalStore(): LocalStore {
       }
     ]
   };
+
+  saveLocalStore(initialStore);
+  return initialStore;
 }
 
 function saveLocalStore(store: LocalStore) {
@@ -218,7 +231,11 @@ async function dbQuery<T>(promise: Promise<T>, timeoutMs: number = 400): Promise
   return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timer));
 }
 
+// PROFILE
 export async function getProfile(): Promise<ProfileData> {
+  if (hasLocalStoreFile()) {
+    return loadLocalStore().profile;
+  }
   try {
     const prof = await dbQuery(prisma.profile.findFirst());
     if (prof) return prof;
@@ -227,10 +244,14 @@ export async function getProfile(): Promise<ProfileData> {
 }
 
 export async function updateProfile(data: Partial<ProfileData>): Promise<ProfileData> {
+  const store = loadLocalStore();
+  store.profile = { ...store.profile, ...data };
+  saveLocalStore(store);
+
   try {
-    const existing = await prisma.profile.findFirst();
+    const existing = await dbQuery(prisma.profile.findFirst());
     if (existing) {
-      return await prisma.profile.update({
+      await dbQuery(prisma.profile.update({
         where: { id: existing.id },
         data: {
           name: data.name ?? existing.name,
@@ -247,24 +268,25 @@ export async function updateProfile(data: Partial<ProfileData>): Promise<Profile
           resumeUrl: data.resumeUrl ?? existing.resumeUrl,
           availableForWork: data.availableForWork ?? existing.availableForWork,
         }
-      });
+      }));
     } else {
-      return await prisma.profile.create({
+      await dbQuery(prisma.profile.create({
         data: {
           ...DEFAULT_PROFILE,
           ...data,
         }
-      });
+      }));
     }
   } catch {}
   
-  const store = loadLocalStore();
-  store.profile = { ...store.profile, ...data };
-  saveLocalStore(store);
   return store.profile;
 }
 
+// PROJECTS
 export async function getProjects(): Promise<ProjectData[]> {
+  if (hasLocalStoreFile()) {
+    return loadLocalStore().projects;
+  }
   try {
     const projs = await dbQuery(prisma.project.findMany({ orderBy: { order: 'asc' } }));
     if (projs && projs.length > 0) return projs;
@@ -273,11 +295,20 @@ export async function getProjects(): Promise<ProjectData[]> {
 }
 
 export async function createProject(data: Omit<ProjectData, 'id'>): Promise<ProjectData> {
+  const store = loadLocalStore();
+  const newProj: ProjectData = {
+    id: `proj-${Date.now()}`,
+    ...data,
+    slug: data.slug || data.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+  };
+  store.projects.unshift(newProj);
+  saveLocalStore(store);
+
   try {
-    return await dbQuery(prisma.project.create({
+    await dbQuery(prisma.project.create({
       data: {
         title: data.title,
-        slug: data.slug || data.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+        slug: newProj.slug,
         description: data.description,
         content: data.content,
         imageUrl: data.imageUrl,
@@ -290,48 +321,47 @@ export async function createProject(data: Omit<ProjectData, 'id'>): Promise<Proj
     }));
   } catch {}
 
-  const store = loadLocalStore();
-  const newProj: ProjectData = {
-    id: `proj-${Date.now()}`,
-    ...data,
-    slug: data.slug || data.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-  };
-  store.projects.unshift(newProj);
-  saveLocalStore(store);
   return newProj;
 }
 
 export async function updateProject(id: string, data: Partial<ProjectData>): Promise<ProjectData> {
+  const store = loadLocalStore();
+  const idx = store.projects.findIndex(p => p.id === id || p.slug === id);
+  if (idx !== -1) {
+    store.projects[idx] = { ...store.projects[idx], ...data };
+    saveLocalStore(store);
+  }
+
   try {
-    return await dbQuery(prisma.project.update({
+    await dbQuery(prisma.project.update({
       where: { id },
       data
     }));
   } catch {}
 
-  const store = loadLocalStore();
-  const idx = store.projects.findIndex(p => p.id === id);
   if (idx !== -1) {
-    store.projects[idx] = { ...store.projects[idx], ...data };
-    saveLocalStore(store);
     return store.projects[idx];
   }
   throw new Error('Project not found');
 }
 
 export async function deleteProject(id: string): Promise<boolean> {
+  const store = loadLocalStore();
+  store.projects = store.projects.filter(p => p.id !== id && p.slug !== id);
+  saveLocalStore(store);
+
   try {
     await dbQuery(prisma.project.delete({ where: { id } }));
-    return true;
   } catch {}
 
-  const store = loadLocalStore();
-  store.projects = store.projects.filter(p => p.id !== id);
-  saveLocalStore(store);
   return true;
 }
 
+// SKILLS
 export async function getSkills(): Promise<SkillData[]> {
+  if (hasLocalStoreFile()) {
+    return loadLocalStore().skills;
+  }
   try {
     const sks = await dbQuery(prisma.skill.findMany({ orderBy: { order: 'asc' } }));
     if (sks && sks.length > 0) return sks;
@@ -340,8 +370,16 @@ export async function getSkills(): Promise<SkillData[]> {
 }
 
 export async function createSkill(data: Omit<SkillData, 'id'>): Promise<SkillData> {
+  const store = loadLocalStore();
+  const newSk: SkillData = {
+    id: `sk-${Date.now()}`,
+    ...data
+  };
+  store.skills.push(newSk);
+  saveLocalStore(store);
+
   try {
-    return await dbQuery(prisma.skill.create({
+    await dbQuery(prisma.skill.create({
       data: {
         name: data.name,
         category: data.category,
@@ -352,29 +390,26 @@ export async function createSkill(data: Omit<SkillData, 'id'>): Promise<SkillDat
     }));
   } catch {}
 
-  const store = loadLocalStore();
-  const newSk: SkillData = {
-    id: `sk-${Date.now()}`,
-    ...data
-  };
-  store.skills.push(newSk);
-  saveLocalStore(store);
   return newSk;
 }
 
 export async function deleteSkill(id: string): Promise<boolean> {
-  try {
-    await dbQuery(prisma.skill.delete({ where: { id } }));
-    return true;
-  } catch {}
-
   const store = loadLocalStore();
   store.skills = store.skills.filter(s => s.id !== id);
   saveLocalStore(store);
+
+  try {
+    await dbQuery(prisma.skill.delete({ where: { id } }));
+  } catch {}
+
   return true;
 }
 
+// EXPERIENCES
 export async function getExperiences(): Promise<ExperienceData[]> {
+  if (hasLocalStoreFile()) {
+    return loadLocalStore().experiences;
+  }
   try {
     const exps = await dbQuery(prisma.experience.findMany({ orderBy: { order: 'asc' } }));
     if (exps && exps.length > 0) return exps;
@@ -383,8 +418,16 @@ export async function getExperiences(): Promise<ExperienceData[]> {
 }
 
 export async function createExperience(data: Omit<ExperienceData, 'id'>): Promise<ExperienceData> {
+  const store = loadLocalStore();
+  const newExp: ExperienceData = {
+    id: `exp-${Date.now()}`,
+    ...data
+  };
+  store.experiences.push(newExp);
+  saveLocalStore(store);
+
   try {
-    return await dbQuery(prisma.experience.create({
+    await dbQuery(prisma.experience.create({
       data: {
         role: data.role,
         company: data.company,
@@ -398,29 +441,26 @@ export async function createExperience(data: Omit<ExperienceData, 'id'>): Promis
     }));
   } catch {}
 
-  const store = loadLocalStore();
-  const newExp: ExperienceData = {
-    id: `exp-${Date.now()}`,
-    ...data
-  };
-  store.experiences.push(newExp);
-  saveLocalStore(store);
   return newExp;
 }
 
 export async function deleteExperience(id: string): Promise<boolean> {
-  try {
-    await dbQuery(prisma.experience.delete({ where: { id } }));
-    return true;
-  } catch {}
-
   const store = loadLocalStore();
   store.experiences = store.experiences.filter(e => e.id !== id);
   saveLocalStore(store);
+
+  try {
+    await dbQuery(prisma.experience.delete({ where: { id } }));
+  } catch {}
+
   return true;
 }
 
+// MESSAGES
 export async function getMessages(): Promise<MessageData[]> {
+  if (hasLocalStoreFile()) {
+    return loadLocalStore().messages;
+  }
   try {
     const msgs = await dbQuery(prisma.message.findMany({ orderBy: { createdAt: 'desc' } }));
     if (msgs && msgs.length > 0) {
@@ -431,18 +471,6 @@ export async function getMessages(): Promise<MessageData[]> {
 }
 
 export async function createMessage(data: { name: string; email: string; subject?: string; message: string }): Promise<MessageData> {
-  try {
-    const created = await dbQuery(prisma.message.create({
-      data: {
-        name: data.name,
-        email: data.email,
-        subject: data.subject,
-        message: data.message,
-      }
-    }));
-    return { ...created, createdAt: created.createdAt.toISOString() };
-  } catch {}
-
   const store = loadLocalStore();
   const newMsg: MessageData = {
     id: `msg-${Date.now()}`,
@@ -452,30 +480,42 @@ export async function createMessage(data: { name: string; email: string; subject
   };
   store.messages.unshift(newMsg);
   saveLocalStore(store);
+
+  try {
+    await dbQuery(prisma.message.create({
+      data: {
+        name: data.name,
+        email: data.email,
+        subject: data.subject,
+        message: data.message,
+      }
+    }));
+  } catch {}
+
   return newMsg;
 }
 
 export async function markMessageRead(id: string): Promise<boolean> {
-  try {
-    await dbQuery(prisma.message.update({ where: { id }, data: { read: true } }));
-    return true;
-  } catch {}
-
   const store = loadLocalStore();
   const msg = store.messages.find(m => m.id === id);
   if (msg) msg.read = true;
   saveLocalStore(store);
+
+  try {
+    await dbQuery(prisma.message.update({ where: { id }, data: { read: true } }));
+  } catch {}
+
   return true;
 }
 
 export async function deleteMessage(id: string): Promise<boolean> {
-  try {
-    await dbQuery(prisma.message.delete({ where: { id } }));
-    return true;
-  } catch {}
-
   const store = loadLocalStore();
   store.messages = store.messages.filter(m => m.id !== id);
   saveLocalStore(store);
+
+  try {
+    await dbQuery(prisma.message.delete({ where: { id } }));
+  } catch {}
+
   return true;
 }
